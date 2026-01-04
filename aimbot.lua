@@ -1,10 +1,3 @@
--- ===== PlaceId Check =====
-local ALLOWED_PLACE_ID = 14518422161 -- ← 動かしたいマップの PlaceId
-
-if game.PlaceId ~= ALLOWED_PLACE_ID then
-	warn("This script is disabled on this map.")
-	return
-end
 -- ========================
 
 -- Rayfield（ここから下は許可されたマップでのみ実行）
