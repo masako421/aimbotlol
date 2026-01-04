@@ -1,20 +1,27 @@
---==============================
--- Rayfield
---==============================
+-- ===== PlaceId Check =====
+local ALLOWED_PLACE_ID = 14518422161 -- ← 動かしたいマップの PlaceId
+
+if game.PlaceId ~= ALLOWED_PLACE_ID then
+	warn("This script is disabled on this map.")
+	return
+end
+-- ========================
+
+-- Rayfield（ここから下は許可されたマップでのみ実行）
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 
 local Window = Rayfield:CreateWindow({
-	Name = "Aim + ESP (Final)",
+	Name = "Aim + ESP (Final Stable)",
 	LoadingTitle = "Loading...",
-	LoadingSubtitle = "Stable Build"
+	LoadingSubtitle = "Complete Build"
 })
 
 local MainTab = Window:CreateTab("Main", 4483362458)
 local ESPTab  = Window:CreateTab("ESP", 4483362458)
 
---==============================
+--==================================================
 -- Services
---==============================
+--==================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -23,15 +30,19 @@ local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
---==============================
+--==================================================
 -- States
---==============================
+--==================================================
 -- Aim
 local AIM_ENABLED = false
 local TEAM_CHECK = true
 local PREDICTION = false
 local SHOW_FOV = false
+
+local MAX_DISTANCE = 150
 local FOV_RADIUS = 200
+local SMOOTHNESS = 0.12
+local PRED_STRENGTH = 0.25
 
 -- ESP
 local ESP_HEAD = false
@@ -39,19 +50,14 @@ local ESP_BODY = false
 local ESP_SKELETON = false
 local ESP_BOX = false
 
--- Config
-local SMOOTHNESS = 0.12
-local MAX_DISTANCE = 150
-local TARGET_PART = "Head"
-local PRED_STRENGTH = 0.3
 local ESP_INTERVAL = 0.03
+local TARGET_PART = "Head"
 
---==============================
+--==================================================
 -- UI
---==============================
+--==================================================
 local AimToggle = MainTab:CreateToggle({
 	Name = "Aim Assist",
-	CurrentValue = false,
 	Callback = function(v) AIM_ENABLED = v end
 })
 
@@ -63,13 +69,11 @@ MainTab:CreateToggle({
 
 MainTab:CreateToggle({
 	Name = "Prediction Aim",
-	CurrentValue = false,
 	Callback = function(v) PREDICTION = v end
 })
 
 MainTab:CreateToggle({
 	Name = "Show FOV",
-	CurrentValue = false,
 	Callback = function(v) SHOW_FOV = v end
 })
 
@@ -77,24 +81,31 @@ MainTab:CreateSlider({
 	Name = "FOV Size",
 	Range = {50, 500},
 	Increment = 10,
-	Suffix = "px",
 	CurrentValue = FOV_RADIUS,
 	Callback = function(v)
 		FOV_RADIUS = v
-		if FOVCircle then
-			FOVCircle.Radius = v
-		end
+		FOVCircle.Radius = v
 	end
 })
 
-ESPTab:CreateToggle({ Name="Head Line ESP", Callback=function(v) ESP_HEAD=v end })
-ESPTab:CreateToggle({ Name="Body Line ESP", Callback=function(v) ESP_BODY=v end })
-ESPTab:CreateToggle({ Name="Skeleton ESP", Callback=function(v) ESP_SKELETON=v end })
-ESPTab:CreateToggle({ Name="2D Box ESP", Callback=function(v) ESP_BOX=v end })
+MainTab:CreateSlider({
+	Name = "Aim Distance",
+	Range = {50, 500},
+	Increment = 10,
+	CurrentValue = MAX_DISTANCE,
+	Callback = function(v)
+		MAX_DISTANCE = v
+	end
+})
 
---==============================
--- F Key
---==============================
+ESPTab:CreateToggle({Name="Head Line ESP", Callback=function(v) ESP_HEAD=v end})
+ESPTab:CreateToggle({Name="Body Line ESP", Callback=function(v) ESP_BODY=v end})
+ESPTab:CreateToggle({Name="Skeleton ESP", Callback=function(v) ESP_SKELETON=v end})
+ESPTab:CreateToggle({Name="2D Box ESP", Callback=function(v) ESP_BOX=v end})
+
+--==================================================
+-- F key
+--==================================================
 UserInputService.InputBegan:Connect(function(i,g)
 	if g then return end
 	if i.KeyCode == Enum.KeyCode.F then
@@ -103,15 +114,13 @@ UserInputService.InputBegan:Connect(function(i,g)
 	end
 end)
 
---==============================
+--==================================================
 -- Drawing Init
---==============================
-local ok = pcall(function() Drawing.new("Line") end)
-if not ok then return end
+--==================================================
+pcall(function() Drawing.new("Line") end)
 
 local RED = Color3.fromRGB(255,0,0)
-local lines = {}
-local used = {}
+local lines, used = {}, {}
 
 local function mark(p,k)
 	used[p] = used[p] or {}
@@ -130,18 +139,55 @@ local function getLine(p,k)
 	return lines[p][k]
 end
 
---==============================
+--==================================================
 -- FOV Circle
---==============================
+--==================================================
 local FOVCircle = Drawing.new("Circle")
+FOVCircle.Color = RED
 FOVCircle.Filled = false
 FOVCircle.Thickness = 1.5
-FOVCircle.Color = RED
 FOVCircle.Radius = FOV_RADIUS
 
---==============================
--- Skeleton Pairs
---==============================
+--==================================================
+-- Utility
+--==================================================
+local function inFOV(pos)
+	local sp,on = Camera:WorldToViewportPoint(pos)
+	if not on then return false,1e9 end
+	local d = (Vector2.new(sp.X,sp.Y) - UserInputService:GetMouseLocation()).Magnitude
+	return d <= FOV_RADIUS, d
+end
+
+--==================================================
+-- Target Search（安定版）
+--==================================================
+local function getTarget()
+	local best, bestD = nil, math.huge
+
+	for _,p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer and (not TEAM_CHECK or p.Team ~= LocalPlayer.Team) then
+			local c = p.Character
+			local part = c and c:FindFirstChild(TARGET_PART)
+			local hum = c and c:FindFirstChildOfClass("Humanoid")
+			if part and hum and hum.Health > 0 then
+				local dist = (Camera.CFrame.Position - part.Position).Magnitude
+				if dist <= MAX_DISTANCE then
+					local inF, d2 = inFOV(part.Position)
+					local score = inF and d2 or dist * 2 -- フォールバック
+					if score < bestD then
+						bestD = score
+						best = part
+					end
+				end
+			end
+		end
+	end
+	return best
+end
+
+--==================================================
+-- Skeleton
+--==================================================
 local bones = {
 	{"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
 	{"UpperTorso","LeftUpperArm"},{"LeftUpperArm","LeftLowerArm"},
@@ -150,69 +196,38 @@ local bones = {
 	{"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"}
 }
 
---==============================
--- Utility
---==============================
-local function inFOV(pos)
-	local s,on = Camera:WorldToViewportPoint(pos)
-	if not on then return false,1e9 end
-	local d = (Vector2.new(s.X,s.Y)-UserInputService:GetMouseLocation()).Magnitude
-	return d<=FOV_RADIUS,d
-end
-
---==============================
--- Aim Target
---==============================
-local function getTarget()
-	local best,bestD=nil,1e9
-	for _,p in ipairs(Players:GetPlayers()) do
-		if p~=LocalPlayer and (not TEAM_CHECK or p.Team~=LocalPlayer.Team) then
-			local c=p.Character
-			local part=c and c:FindFirstChild(TARGET_PART)
-			local hum=c and c:FindFirstChildOfClass("Humanoid")
-			if part and hum and hum.Health>0 then
-				local ok,d=inFOV(part.Position)
-				if ok and d<bestD then
-					bestD=d
-					best=part
-				end
-			end
-		end
-	end
-	return best
-end
-
---==============================
--- ESP Update (0.03s)
---==============================
+--==================================================
+-- ESP Loop (0.03s)
+--==================================================
 task.spawn(function()
 	while true do
-		used={}
-		for _,p in ipairs(Players:GetPlayers()) do
-			if p~=LocalPlayer then
-				local c=p.Character
-				local head=c and c:FindFirstChild("Head")
-				local hrp=c and c:FindFirstChild("HumanoidRootPart")
+		used = {}
 
-				if ESP_HEAD and head then
-					local s,on=Camera:WorldToViewportPoint(head.Position)
+		for _,p in ipairs(Players:GetPlayers()) do
+			if p ~= LocalPlayer then
+				local c = p.Character
+				local h = c and c:FindFirstChild("Head")
+				local hrp = c and c:FindFirstChild("HumanoidRootPart")
+
+				if ESP_HEAD and h then
+					local s,on = Camera:WorldToViewportPoint(h.Position)
 					if on then
-						local l=getLine(p,"H")
-						l.From=Vector2.new(Camera.ViewportSize.X/2,Camera.ViewportSize.Y)
-						l.To=Vector2.new(s.X,s.Y)
-						l.Color=RED
-						l.Visible=true
+						local l = getLine(p,"H")
+						l.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
+						l.To = Vector2.new(s.X,s.Y)
+						l.Color = RED
+						l.Visible = true
 					end
 				end
 
 				if ESP_BODY and hrp then
-					local s,on=Camera:WorldToViewportPoint(hrp.Position)
+					local s,on = Camera:WorldToViewportPoint(hrp.Position)
 					if on then
-						local l=getLine(p,"B")
-						l.From=Vector2.new(Camera.ViewportSize.X/2,Camera.ViewportSize.Y)
-						l.To=Vector2.new(s.X,s.Y)
-						l.Color=RED
-						l.Visible=true
+						local l = getLine(p,"B")
+						l.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
+						l.To = Vector2.new(s.X,s.Y)
+						l.Color = RED
+						l.Visible = true
 					end
 				end
 
@@ -234,17 +249,17 @@ task.spawn(function()
 					end
 				end
 
-				if ESP_BOX and head and hrp then
-					local h,on1=Camera:WorldToViewportPoint(head.Position+Vector3.new(0,0.5,0))
-					local f,on2=Camera:WorldToViewportPoint(hrp.Position-Vector3.new(0,3,0))
+				if ESP_BOX and h and hrp then
+					local hp,on1=Camera:WorldToViewportPoint(h.Position+Vector3.new(0,0.5,0))
+					local fp,on2=Camera:WorldToViewportPoint(hrp.Position-Vector3.new(0,3,0))
 					if on1 and on2 then
-						local hgt=math.abs(f.Y-h.Y)
+						local hgt=math.abs(fp.Y-hp.Y)
 						local w=hgt/2
 						local pts={
-							{h.X-w/2,h.Y,h.X+w/2,h.Y},
-							{h.X+w/2,h.Y,h.X+w/2,f.Y},
-							{h.X+w/2,f.Y,h.X-w/2,f.Y},
-							{h.X-w/2,f.Y,h.X-w/2,h.Y}
+							{hp.X-w/2,hp.Y,hp.X+w/2,hp.Y},
+							{hp.X+w/2,hp.Y,hp.X+w/2,fp.Y},
+							{hp.X+w/2,fp.Y,hp.X-w/2,fp.Y},
+							{hp.X-w/2,fp.Y,hp.X-w/2,hp.Y}
 						}
 						for i,v in ipairs(pts) do
 							local l=getLine(p,"BX"..i)
@@ -265,28 +280,33 @@ task.spawn(function()
 				end
 			end
 		end
+
 		task.wait(ESP_INTERVAL)
 	end
 end)
 
---==============================
+--==================================================
 -- Aim Loop
---==============================
+--==================================================
 RunService.RenderStepped:Connect(function()
 	FOVCircle.Visible = SHOW_FOV
 	FOVCircle.Position = UserInputService:GetMouseLocation()
 
 	if AIM_ENABLED then
-		local t=getTarget()
+		local t = getTarget()
 		if t then
-			local pos=t.Position
+			local pos = t.Position
 			if PREDICTION then
-				local hrp=t.Parent:FindFirstChild("HumanoidRootPart")
+				local hrp = t.Parent:FindFirstChild("HumanoidRootPart")
 				if hrp then
-					pos+=Vector3.new(hrp.Velocity.X,0,hrp.Velocity.Z)*PRED_STRENGTH
+					local v = hrp.AssemblyLinearVelocity
+					pos += Vector3.new(v.X,0,v.Z) * PRED_STRENGTH
 				end
 			end
-			Camera.CFrame=Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position,pos),SMOOTHNESS)
+			Camera.CFrame = Camera.CFrame:Lerp(
+				CFrame.new(Camera.CFrame.Position, pos),
+				SMOOTHNESS
+			)
 		end
 	end
 end)
