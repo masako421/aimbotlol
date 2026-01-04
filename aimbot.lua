@@ -9,13 +9,14 @@ local Window = Rayfield:CreateWindow({
 
 local MainTab = Window:CreateTab("Main", 4483362458)
 
+----------------------------------------------------------------
 -- Services
+----------------------------------------------------------------
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
--- Player / Camera
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
@@ -31,14 +32,11 @@ local MAX_DISTANCE = 150
 local SMOOTHNESS = 0.12
 local TARGET_PART = "Head"
 
--- Prediction（軽め）
-local PREDICTION_STRENGTH = 0.3 -- ★ 0.2〜0.4が自然
-
--- FOV
+local PREDICTION_STRENGTH = 0.3
 local FOV_RADIUS = 200
 
 ----------------------------------------------------------------
--- Rayfield Toggles
+-- UI（★必ず最初に全部作る）
 ----------------------------------------------------------------
 local AimToggle = MainTab:CreateToggle({
 	Name = "Aim Assist",
@@ -73,7 +71,7 @@ MainTab:CreateToggle({
 })
 
 ----------------------------------------------------------------
--- Fキーで Aim ON / OFF（UI同期）
+-- Fキー Aim ON/OFF
 ----------------------------------------------------------------
 UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then return end
@@ -84,13 +82,16 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 
 ----------------------------------------------------------------
--- FOV Circle
+-- FOV Circle（★ Drawing を安全に）
 ----------------------------------------------------------------
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = 1.5
-FOVCircle.Filled = false
-FOVCircle.Radius = FOV_RADIUS
-FOVCircle.Visible = false
+local FOVCircle
+local drawingOk = pcall(function()
+	FOVCircle = Drawing.new("Circle")
+	FOVCircle.Thickness = 1.5
+	FOVCircle.Filled = false
+	FOVCircle.Radius = FOV_RADIUS
+	FOVCircle.Visible = false
+end)
 
 ----------------------------------------------------------------
 -- Utility
@@ -109,7 +110,7 @@ end
 -- Target Search
 ----------------------------------------------------------------
 local function getClosestTarget()
-	local closestPart = nil
+	local closest
 	local shortest = math.huge
 
 	for _, player in ipairs(Players:GetPlayers()) do
@@ -125,27 +126,25 @@ local function getClosestTarget()
 
 			if part and hrp and hum and hum.Health > 0 then
 				local inFOV, fovDist = isInFOV(part.Position)
-				if inFOV then
-					local dist3D = (Camera.CFrame.Position - part.Position).Magnitude
-					if dist3D < MAX_DISTANCE and fovDist < shortest then
-						shortest = fovDist
-						closestPart = part
-					end
+				if inFOV and fovDist < shortest then
+					shortest = fovDist
+					closest = part
 				end
 			end
 		end
 	end
 
-	return closestPart
+	return closest
 end
 
 ----------------------------------------------------------------
 -- Main Loop
 ----------------------------------------------------------------
 RunService.RenderStepped:Connect(function()
-	-- FOV描画
-	FOVCircle.Visible = SHOW_FOV
-	FOVCircle.Position = UserInputService:GetMouseLocation()
+	if drawingOk and FOVCircle then
+		FOVCircle.Visible = SHOW_FOV
+		FOVCircle.Position = UserInputService:GetMouseLocation()
+	end
 
 	if not AIM_ENABLED then return end
 
@@ -154,21 +153,16 @@ RunService.RenderStepped:Connect(function()
 
 	local aimPos = target.Position
 
-	-- 軽い予測
 	if PREDICTION_ENABLED then
 		local hrp = target.Parent:FindFirstChild("HumanoidRootPart")
 		if hrp then
-			local vel = hrp.Velocity
-			aimPos = aimPos + Vector3.new(
-				vel.X * PREDICTION_STRENGTH,
-				0, -- ★ 上下は予測しない
-				vel.Z * PREDICTION_STRENGTH
-			)
+			local v = hrp.Velocity
+			aimPos += Vector3.new(v.X, 0, v.Z) * PREDICTION_STRENGTH
 		end
 	end
 
-	local camPos = Camera.CFrame.Position
-	local targetCF = CFrame.new(camPos, aimPos)
-
-	Camera.CFrame = Camera.CFrame:Lerp(targetCF, SMOOTHNESS)
+	Camera.CFrame = Camera.CFrame:Lerp(
+		CFrame.new(Camera.CFrame.Position, aimPos),
+		SMOOTHNESS
+	)
 end)
