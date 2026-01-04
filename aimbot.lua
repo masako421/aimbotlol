@@ -20,23 +20,35 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
 -- Settings
-local AIM_ENABLED = false          -- ★ 起動時OFF
+local AIM_ENABLED = false          -- 起動時OFF
+local TEAM_CHECK = true           -- ★ チームチェック初期ON
 local MAX_DISTANCE = 120
 local SMOOTHNESS = 0.12
 local TARGET_PART = "Head"
 
--- Rayfield Toggle
+-- Aim Toggle
 local AimToggle
 AimToggle = MainTab:CreateToggle({
 	Name = "Aim Assist",
-	CurrentValue = false,
+	CurrentValue = AIM_ENABLED,
 	Flag = "AimAssistToggle",
 	Callback = function(Value)
 		AIM_ENABLED = Value
 	end,
 })
 
--- FキーでON / OFF（Toggleと同期）
+-- Team Check Toggle
+local TeamToggle
+TeamToggle = MainTab:CreateToggle({
+	Name = "Team Check",
+	CurrentValue = TEAM_CHECK,
+	Flag = "TeamCheckToggle",
+	Callback = function(Value)
+		TEAM_CHECK = Value
+	end,
+})
+
+-- Fキーで Aim ON / OFF（UI同期）
 UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then return end
 	if input.KeyCode == Enum.KeyCode.F then
@@ -45,13 +57,17 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	end
 end)
 
--- 一番近い敵を探す（チームチェック付き）
+-- 一番近いターゲット取得
 local function getClosestEnemy()
 	local closestHead = nil
 	local shortest = MAX_DISTANCE
 
 	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer and player.Team ~= LocalPlayer.Team then
+		if player ~= LocalPlayer then
+			if TEAM_CHECK and player.Team == LocalPlayer.Team then
+				continue
+			end
+
 			local char = player.Character
 			local head = char and char:FindFirstChild(TARGET_PART)
 			local hum = char and char:FindFirstChildOfClass("Humanoid")
