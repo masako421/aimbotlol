@@ -1,4 +1,14 @@
+-- Rayfield
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+	Name = "Aim Assist",
+	LoadingTitle = "Loading...",
+	LoadingSubtitle = "Rayfield UI"
+})
+
+local MainTab = Window:CreateTab("Main", 4483362458)
+
 -- Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -9,18 +19,29 @@ local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
--- Settings（通常使用向け）
-local AIM_ENABLED = true          -- ★ 実行時からON
-local MAX_DISTANCE = 120          -- ★ 距離を短めに（自然）
-local SMOOTHNESS = 0.12           -- なめらかさ（強すぎない）
+-- Settings
+local AIM_ENABLED = false          -- ★ 起動時OFF
+local MAX_DISTANCE = 120
+local SMOOTHNESS = 0.12
 local TARGET_PART = "Head"
 
--- Toggle（FキーでON/OFF）
+-- Rayfield Toggle
+local AimToggle
+AimToggle = MainTab:CreateToggle({
+	Name = "Aim Assist",
+	CurrentValue = false,
+	Flag = "AimAssistToggle",
+	Callback = function(Value)
+		AIM_ENABLED = Value
+	end,
+})
+
+-- FキーでON / OFF（Toggleと同期）
 UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then return end
 	if input.KeyCode == Enum.KeyCode.F then
 		AIM_ENABLED = not AIM_ENABLED
-		warn("AimAssist:", AIM_ENABLED and "ON" or "OFF")
+		AimToggle:Set(AIM_ENABLED)
 	end
 end)
 
