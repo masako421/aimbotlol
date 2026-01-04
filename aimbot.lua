@@ -8,10 +8,19 @@ end
 -- ========================
 
 -- Rayfield（ここから下は許可されたマップでのみ実行）
+--==============================
+-- PlaceId 制限（必要なら）
+--==============================
+-- local ALLOWED_PLACE_ID = 1234567890
+-- if game.PlaceId ~= ALLOWED_PLACE_ID then return end
+
+--==============================
+-- Rayfield
+--==============================
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 
 local Window = Rayfield:CreateWindow({
-	Name = "Aim + ESP (Final Stable)",
+	Name = "Aim + ESP (Color Split Final)",
 	LoadingTitle = "Loading...",
 	LoadingSubtitle = "Complete Build"
 })
@@ -19,9 +28,9 @@ local Window = Rayfield:CreateWindow({
 local MainTab = Window:CreateTab("Main", 4483362458)
 local ESPTab  = Window:CreateTab("ESP", 4483362458)
 
---==================================================
+--==============================
 -- Services
---==================================================
+--==============================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -30,12 +39,10 @@ local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
---==================================================
--- States
---==================================================
--- Aim
+--==============================
+-- Aim States
+--==============================
 local AIM_ENABLED = false
-local TEAM_CHECK = true
 local PREDICTION = false
 local SHOW_FOV = false
 
@@ -43,28 +50,32 @@ local MAX_DISTANCE = 150
 local FOV_RADIUS = 200
 local SMOOTHNESS = 0.12
 local PRED_STRENGTH = 0.25
+local TARGET_PART = "Head"
 
--- ESP
+--==============================
+-- ESP States
+--==============================
 local ESP_HEAD = false
 local ESP_BODY = false
 local ESP_SKELETON = false
 local ESP_BOX = false
-
 local ESP_INTERVAL = 0.03
-local TARGET_PART = "Head"
 
---==================================================
--- UI
---==================================================
+--==============================
+-- ESP Colors（全部分離）
+--==============================
+local HEAD_COLOR     = Color3.fromRGB(255, 0, 0)
+local BODY_COLOR     = Color3.fromRGB(255, 80, 80)
+local SKELETON_COLOR = Color3.fromRGB(0, 255, 255)
+local BOX_COLOR      = Color3.fromRGB(255, 255, 0)
+local FOV_COLOR      = Color3.fromRGB(255, 0, 0)
+
+--==============================
+-- UI（Main）
+--==============================
 local AimToggle = MainTab:CreateToggle({
 	Name = "Aim Assist",
 	Callback = function(v) AIM_ENABLED = v end
-})
-
-MainTab:CreateToggle({
-	Name = "Team Check",
-	CurrentValue = TEAM_CHECK,
-	Callback = function(v) TEAM_CHECK = v end
 })
 
 MainTab:CreateToggle({
@@ -98,14 +109,50 @@ MainTab:CreateSlider({
 	end
 })
 
+MainTab:CreateColorPicker({
+	Name = "FOV Color",
+	Color = FOV_COLOR,
+	Callback = function(c)
+		FOV_COLOR = c
+		FOVCircle.Color = c
+	end
+})
+
+--==============================
+-- UI（ESP）
+--==============================
 ESPTab:CreateToggle({Name="Head Line ESP", Callback=function(v) ESP_HEAD=v end})
 ESPTab:CreateToggle({Name="Body Line ESP", Callback=function(v) ESP_BODY=v end})
 ESPTab:CreateToggle({Name="Skeleton ESP", Callback=function(v) ESP_SKELETON=v end})
 ESPTab:CreateToggle({Name="2D Box ESP", Callback=function(v) ESP_BOX=v end})
 
---==================================================
--- F key
---==================================================
+ESPTab:CreateColorPicker({
+	Name = "Head Line Color",
+	Color = HEAD_COLOR,
+	Callback = function(c) HEAD_COLOR = c end
+})
+
+ESPTab:CreateColorPicker({
+	Name = "Body Line Color",
+	Color = BODY_COLOR,
+	Callback = function(c) BODY_COLOR = c end
+})
+
+ESPTab:CreateColorPicker({
+	Name = "Skeleton Color",
+	Color = SKELETON_COLOR,
+	Callback = function(c) SKELETON_COLOR = c end
+})
+
+ESPTab:CreateColorPicker({
+	Name = "Box Color",
+	Color = BOX_COLOR,
+	Callback = function(c) BOX_COLOR = c end
+})
+
+--==============================
+-- Fキー
+--==============================
 UserInputService.InputBegan:Connect(function(i,g)
 	if g then return end
 	if i.KeyCode == Enum.KeyCode.F then
@@ -114,12 +161,11 @@ UserInputService.InputBegan:Connect(function(i,g)
 	end
 end)
 
---==================================================
+--==============================
 -- Drawing Init
---==================================================
+--==============================
 pcall(function() Drawing.new("Line") end)
 
-local RED = Color3.fromRGB(255,0,0)
 local lines, used = {}, {}
 
 local function mark(p,k)
@@ -139,33 +185,32 @@ local function getLine(p,k)
 	return lines[p][k]
 end
 
---==================================================
+--==============================
 -- FOV Circle
---==================================================
+--==============================
 local FOVCircle = Drawing.new("Circle")
-FOVCircle.Color = RED
 FOVCircle.Filled = false
 FOVCircle.Thickness = 1.5
+FOVCircle.Color = FOV_COLOR
 FOVCircle.Radius = FOV_RADIUS
 
---==================================================
+--==============================
 -- Utility
---==================================================
+--==============================
 local function inFOV(pos)
 	local sp,on = Camera:WorldToViewportPoint(pos)
 	if not on then return false,1e9 end
-	local d = (Vector2.new(sp.X,sp.Y) - UserInputService:GetMouseLocation()).Magnitude
+	local d = (Vector2.new(sp.X,sp.Y)-UserInputService:GetMouseLocation()).Magnitude
 	return d <= FOV_RADIUS, d
 end
 
---==================================================
--- Target Search（安定版）
---==================================================
+--==============================
+-- Target Search（安定）
+--==============================
 local function getTarget()
-	local best, bestD = nil, math.huge
-
+	local best, bestScore = nil, math.huge
 	for _,p in ipairs(Players:GetPlayers()) do
-		if p ~= LocalPlayer and (not TEAM_CHECK or p.Team ~= LocalPlayer.Team) then
+		if p ~= LocalPlayer then
 			local c = p.Character
 			local part = c and c:FindFirstChild(TARGET_PART)
 			local hum = c and c:FindFirstChildOfClass("Humanoid")
@@ -173,9 +218,9 @@ local function getTarget()
 				local dist = (Camera.CFrame.Position - part.Position).Magnitude
 				if dist <= MAX_DISTANCE then
 					local inF, d2 = inFOV(part.Position)
-					local score = inF and d2 or dist * 2 -- フォールバック
-					if score < bestD then
-						bestD = score
+					local score = inF and d2 or dist * 2
+					if score < bestScore then
+						bestScore = score
 						best = part
 					end
 				end
@@ -185,9 +230,9 @@ local function getTarget()
 	return best
 end
 
---==================================================
--- Skeleton
---==================================================
+--==============================
+-- Skeleton 定義
+--==============================
 local bones = {
 	{"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
 	{"UpperTorso","LeftUpperArm"},{"LeftUpperArm","LeftLowerArm"},
@@ -196,9 +241,9 @@ local bones = {
 	{"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"}
 }
 
---==================================================
--- ESP Loop (0.03s)
---==================================================
+--==============================
+-- ESP Loop（0.03s）
+--==============================
 task.spawn(function()
 	while true do
 		used = {}
@@ -215,7 +260,7 @@ task.spawn(function()
 						local l = getLine(p,"H")
 						l.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
 						l.To = Vector2.new(s.X,s.Y)
-						l.Color = RED
+						l.Color = HEAD_COLOR
 						l.Visible = true
 					end
 				end
@@ -226,7 +271,7 @@ task.spawn(function()
 						local l = getLine(p,"B")
 						l.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
 						l.To = Vector2.new(s.X,s.Y)
-						l.Color = RED
+						l.Color = BODY_COLOR
 						l.Visible = true
 					end
 				end
@@ -242,7 +287,7 @@ task.spawn(function()
 								local l=getLine(p,"S"..b[1]..b[2])
 								l.From=Vector2.new(sa.X,sa.Y)
 								l.To=Vector2.new(sb.X,sb.Y)
-								l.Color=RED
+								l.Color=SKELETON_COLOR
 								l.Visible=true
 							end
 						end
@@ -265,7 +310,7 @@ task.spawn(function()
 							local l=getLine(p,"BX"..i)
 							l.From=Vector2.new(v[1],v[2])
 							l.To=Vector2.new(v[3],v[4])
-							l.Color=RED
+							l.Color=BOX_COLOR
 							l.Visible=true
 						end
 					end
@@ -285,12 +330,13 @@ task.spawn(function()
 	end
 end)
 
---==================================================
+--==============================
 -- Aim Loop
---==================================================
+--==============================
 RunService.RenderStepped:Connect(function()
 	FOVCircle.Visible = SHOW_FOV
 	FOVCircle.Position = UserInputService:GetMouseLocation()
+	FOVCircle.Color = FOV_COLOR
 
 	if AIM_ENABLED then
 		local t = getTarget()
