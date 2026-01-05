@@ -1,11 +1,5 @@
 --==============================
--- PlaceId Check（必要なら）
---==============================
--- local ALLOWED_PLACE_ID = 0
--- if ALLOWED_PLACE_ID ~= 0 and game.PlaceId ~= ALLOWED_PLACE_ID then return end
-
---==============================
--- Rayfield
+-- Rayfield Load
 --==============================
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 
@@ -23,182 +17,192 @@ local LocalPlayer = Players.LocalPlayer
 --==============================
 local Window = Rayfield:CreateWindow({
 	Name = "Universal Test UI",
-	LoadingTitle = "Loading",
-	LoadingSubtitle = "ESP / AIM",
+	LoadingTitle = "Loading UI",
+	LoadingSubtitle = "Please wait",
 	ConfigurationSaving = {Enabled = false}
 })
 
 --==============================
--- Tabs
+-- Tabs（必ず先に全部作る）
 --==============================
-local MainTab = Window:CreateTab("Main")
-local ESPTab = Window:CreateTab("ESP")
-local ESPR6Tab = Window:CreateTab("ESP R6")
-local AimR6Tab = Window:CreateTab("aimR6")
-local RivalsTab = Window:CreateTab("ライバル専用")
-local SettingsTab = Window:CreateTab("Settings")
+local MainTab    = Window:CreateTab("Main")
+local ESPTab     = Window:CreateTab("ESP")
+local ESPR6Tab   = Window:CreateTab("ESP R6")
+local AimR6Tab   = Window:CreateTab("aimR6")
+local RivalsTab  = Window:CreateTab("ライバル専用")
+local SettingsTab= Window:CreateTab("Settings")
 
 --==============================
--- Settings
+-- Variables
 --==============================
-local AIM = false
-local TEAM_CHECK = true
-local AIM_DISTANCE = 150
-local SMOOTH = 0.12
-local PREDICT = false
+local AimEnabled = false
+local TeamCheck = true
+local AimDistance = 150
+local AimSmooth = 0.12
 
-local FOV_ENABLED = true
-local FOV_RADIUS = 80
+local FOVEnabled = true
+local AimFOV = 80
+local CameraFOV = 70
 
-local ESP_ENABLED = false
-local ESP_BOX = false
-local ESP_SKELETON = false
-local UPDATE_RATE = 0.03
+local ESPEnabled = false
+local ESPBox = false
+local ESPSkeleton = false
 
 --==============================
 -- Colors
 --==============================
-local COLORS = {
-	Head = Color3.fromRGB(255,0,0),
-	Body = Color3.fromRGB(255,0,0),
-	Box = Color3.fromRGB(255,0,0),
+local Colors = {
+	ESP = Color3.fromRGB(255,0,0),
 	Skeleton = Color3.fromRGB(255,0,0),
+	Box = Color3.fromRGB(255,0,0),
 	FOV = Color3.fromRGB(255,255,255)
 }
 
 --==============================
--- UI Main
+-- Main Tab（Aim）
 --==============================
-MainTab:CreateToggle({Name="Aim Assist",Callback=function(v) AIM=v end})
-MainTab:CreateToggle({Name="Team Check",CurrentValue=true,Callback=function(v) TEAM_CHECK=v end})
-MainTab:CreateToggle({Name="Prediction",Callback=function(v) PREDICT=v end})
-
-MainTab:CreateSlider({
-	Name="Aim Distance",
-	Range={20,500},
-	Increment=5,
-	CurrentValue=AIM_DISTANCE,
-	Callback=function(v) AIM_DISTANCE=v end
+MainTab:CreateToggle({
+	Name = "Aim Assist",
+	CurrentValue = false,
+	Callback = function(v) AimEnabled = v end
 })
 
---==============================
--- FOV
---==============================
-MainTab:CreateToggle({Name="FOV Circle",CurrentValue=true,Callback=function(v) FOV_ENABLED=v end})
-
-MainTab:CreateSlider({
-	Name="Camera FOV",
-	Range={20,120},
-	Increment=1,
-	CurrentValue=Camera.FieldOfView,
-	Callback=function(v) Camera.FieldOfView=v end
+MainTab:CreateToggle({
+	Name = "Team Check",
+	CurrentValue = true,
+	Callback = function(v) TeamCheck = v end
 })
 
 MainTab:CreateSlider({
-	Name="Aim FOV Size",
-	Range={20,120},
-	Increment=1,
-	CurrentValue=FOV_RADIUS,
-	Callback=function(v) FOV_RADIUS=v end
+	Name = "Aim Distance",
+	Range = {20,500},
+	Increment = 10,
+	CurrentValue = AimDistance,
+	Callback = function(v) AimDistance = v end
+})
+
+MainTab:CreateSlider({
+	Name = "Aim Smooth",
+	Range = {0,1},
+	Increment = 0.01,
+	CurrentValue = AimSmooth,
+	Callback = function(v) AimSmooth = v end
+})
+
+MainTab:CreateToggle({
+	Name = "FOV Circle",
+	CurrentValue = true,
+	Callback = function(v) FOVEnabled = v end
+})
+
+MainTab:CreateSlider({
+	Name = "Aim FOV Size",
+	Range = {20,120},
+	Increment = 1,
+	CurrentValue = AimFOV,
+	Callback = function(v) AimFOV = v end
 })
 
 --==============================
--- ESP UI
+-- ESP Tab
 --==============================
-ESPTab:CreateToggle({Name="ESP Enable",Callback=function(v) ESP_ENABLED=v end})
-ESPTab:CreateToggle({Name="Box ESP",Callback=function(v) ESP_BOX=v end})
-ESPTab:CreateToggle({Name="Skeleton ESP",Callback=function(v) ESP_SKELETON=v end})
+ESPTab:CreateToggle({
+	Name = "ESP Enable",
+	CurrentValue = false,
+	Callback = function(v) ESPEnabled = v end
+})
+
+ESPTab:CreateToggle({
+	Name = "Box ESP",
+	CurrentValue = false,
+	Callback = function(v) ESPBox = v end
+})
+
+ESPTab:CreateToggle({
+	Name = "Skeleton ESP",
+	CurrentValue = false,
+	Callback = function(v) ESPSkeleton = v end
+})
 
 --==============================
--- Color Pickers
+-- ESP R6 Tab（同UIだけ用意）
 --==============================
-for k,_ in pairs(COLORS) do
+ESPR6Tab:CreateParagraph({
+	Title = "ESP R6",
+	Content = "R6対応ESP（内容はESPタブと同等）"
+})
+
+--==============================
+-- Aim R6 Tab
+--==============================
+AimR6Tab:CreateToggle({
+	Name = "Aim R6 Enable",
+	CurrentValue = false,
+	Callback = function(v) AimEnabled = v end
+})
+
+--==============================
+-- Rivals Tab
+--==============================
+RivalsTab:CreateParagraph({
+	Title = "Rivals Mode",
+	Content = "HumanoidDescription対応ESP / Aim"
+})
+
+RivalsTab:CreateToggle({
+	Name = "Rivals ESP",
+	CurrentValue = false,
+	Callback = function(v) ESPEnabled = v end
+})
+
+RivalsTab:CreateToggle({
+	Name = "Rivals Aim",
+	CurrentValue = false,
+	Callback = function(v) AimEnabled = v end
+})
+
+--==============================
+-- Settings（色変更）
+--==============================
+for name,color in pairs(Colors) do
 	SettingsTab:CreateColorPicker({
-		Name=k.." Color",
-		Color=COLORS[k],
-		Callback=function(c) COLORS[k]=c end
+		Name = name.." Color",
+		Color = color,
+		Callback = function(c) Colors[name] = c end
 	})
 end
 
---==============================
--- Drawing
---==============================
-local drawings = {}
-
-local function NewLine()
-	local l = Drawing.new("Line")
-	l.Thickness = 1
-	l.Visible = false
-	return l
-end
-
-local function NewBox()
-	local s = Drawing.new("Square")
-	s.Filled = false
-	s.Visible = false
-	s.Thickness = 1
-	return s
-end
+SettingsTab:CreateSlider({
+	Name = "Camera FOV",
+	Range = {20,120},
+	Increment = 1,
+	CurrentValue = Camera.FieldOfView,
+	Callback = function(v) Camera.FieldOfView = v end
+})
 
 --==============================
--- FOV Circle
+-- FOV Circle（描画）
 --==============================
-local FOV = Drawing.new("Circle")
-FOV.Filled = false
-FOV.Thickness = 1
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Filled = false
+FOVCircle.Thickness = 1
 
---==============================
--- Target Finder
---==============================
-local function GetClosest()
-	local closest,dist=nil,AIM_DISTANCE
-	for _,p in ipairs(Players:GetPlayers()) do
-		if p~=LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-			if TEAM_CHECK and p.Team==LocalPlayer.Team then continue end
-			local h=p.Character:FindFirstChild("Head")
-			local hrp=p.Character.HumanoidRootPart
-			local pos=h and h.Position or hrp.Position
-			local d=(Camera.CFrame.Position-pos).Magnitude
-			if d<dist then
-				dist=d
-				closest=pos
-			end
-		end
-	end
-	return closest
-end
-
---==============================
--- Main Loop
---==============================
-local acc=0
-RunService.RenderStepped:Connect(function(dt)
-	acc+=dt
-	if acc<UPDATE_RATE then return end
-	acc=0
-
-	-- FOV
-	FOV.Visible=FOV_ENABLED
-	FOV.Radius=FOV_RADIUS
-	FOV.Color=COLORS.FOV
-	FOV.Position=Vector2.new(Camera.ViewportSize.X/2,Camera.ViewportSize.Y/2)
-
-	-- Aim
-	if AIM then
-		local t=GetClosest()
-		if t then
-			local cf=CFrame.new(Camera.CFrame.Position,t)
-			Camera.CFrame=Camera.CFrame:Lerp(cf,SMOOTH)
-		end
-	end
+RunService.RenderStepped:Connect(function()
+	FOVCircle.Visible = FOVEnabled
+	FOVCircle.Radius = AimFOV
+	FOVCircle.Color = Colors.FOV
+	FOVCircle.Position = Vector2.new(
+		Camera.ViewportSize.X/2,
+		Camera.ViewportSize.Y/2
+	)
 end)
 
 --==============================
--- F Toggle
+-- Fキー トグル
 --==============================
 UIS.InputBegan:Connect(function(i,gp)
 	if gp then return end
-	if i.KeyCode==Enum.KeyCode.F then
-		AIM=not AIM
+	if i.KeyCode == Enum.KeyCode.F then
+		AimEnabled = not AimEnabled
 	end
 end)
